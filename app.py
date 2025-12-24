@@ -1,7 +1,14 @@
-from flask import Flask, request, render_template_string
+from flask import Flask, request, render_template_string, session, redirect, url_for, flash
+from werkzeug.security import generate_password_hash, check_password_hash
+from functools import wraps
 
 app = Flask(__name__)
+app.secret_key = 'super_secret_moodflix_key_2025_change_this!'
 
+# In-memory users (demo only)
+users = {}
+
+# Movie database
 contents = {
     "3 Idiots": ["happy", "relaxed", "https://theshesaga.com/wp-content/uploads/2025/09/2_20250906_214134_0001.png"],
     "Zindagi Na Milegi Dobara": ["happy", "excited", "relaxed", "https://www.acmodasi.in/amdb/images/movie/n/f/zindagi-na-milegi-dobara-2011-0pjbjb.jpg"],
@@ -42,9 +49,124 @@ contents = {
 
 possible_moods = ['happy', 'sad', 'romantic', 'excited', 'relaxed']
 
+def login_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if 'logged_in' not in session:
+            return redirect(url_for('login'))
+        return f(*args, **kwargs)
+    return decorated_function
+
+@app.route('/signup', methods=['GET', 'POST'])
+def signup():
+    if request.method == 'POST':
+        username = request.form['username'].strip()
+        password = request.form['password']
+        if username in users:
+            flash('Username already exists!')
+        elif len(password) < 4:
+            flash('Password must be at least 4 characters.')
+        else:
+            users[username] = generate_password_hash(password)
+            session['logged_in'] = True
+            flash('Signed up successfully! Welcome!')
+            return redirect(url_for('home'))
+    return render_template_string('''
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Sign Up | MoodFlix</title>
+        <style>
+            body, html {margin:0;padding:0;height:100%;background:#141414;color:#fff;font-family:'Helvetica Neue',sans-serif;display:flex;align-items:center;justify-content:center;}
+            .box {background:#221f1f;padding:60px 40px;border-radius:8px;box-shadow:0 8px 30px rgba(0,0,0,0.8);width:100%;max-width:400px;}
+            h2 {text-align:center;font-size:2.5rem;margin-bottom:30px;}
+            input[type="text"], input[type="password"] {width:100%;padding:16px;margin:10px 0;font-size:1.1rem;background:#333;border:none;border-radius:4px;color:#fff;}
+            button {width:100%;padding:16px;background:#e50914;border:none;border-radius:4px;color:#fff;font-size:1.2rem;cursor:pointer;margin-top:20px;}
+            button:hover {background:#f40612;}
+            .link {text-align:center;margin-top:20px;}
+            .link a {color:#e50914;text-decoration:none;}
+            .error {color:#e50914;text-align:center;margin-top:20px;}
+        </style>
+    </head>
+    <body>
+        <div class="box">
+            <h2>Sign Up for MoodFlix</h2>
+            <form method="post">
+                <input type="text" name="username" placeholder="Choose username" required>
+                <input type="password" name="password" placeholder="Create password" required>
+                <button type="submit">Sign Up</button>
+            </form>
+            {% with messages = get_flashed_messages() %}
+              {% if messages %}
+                <p class="error">{{ messages[0] }}</p>
+              {% endif %}
+            {% endwith %}
+            <div class="link">Already have an account? <a href="/login">Log in</a></div>
+        </div>
+    </body>
+    </html>
+    ''')
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if request.method == 'POST':
+        username = request.form['username'].strip()
+        password = request.form['password']
+        if username in users and check_password_hash(users[username], password):
+            session['logged_in'] = True
+            return redirect(url_for('home'))
+        else:
+            flash('Invalid username or password')
+    return render_template_string('''
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Log In | MoodFlix</title>
+        <style>
+            body, html {margin:0;padding:0;height:100%;background:#141414;color:#fff;font-family:'Helvetica Neue',sans-serif;display:flex;align-items:center;justify-content:center;}
+            .box {background:#221f1f;padding:60px 40px;border-radius:8px;box-shadow:0 8px 30px rgba(0,0,0,0.8);width:100%;max-width:400px;}
+            h2 {text-align:center;font-size:2.5rem;margin-bottom:30px;}
+            input[type="text"], input[type="password"] {width:100%;padding:16px;margin:10px 0;font-size:1.1rem;background:#333;border:none;border-radius:4px;color:#fff;}
+            button {width:100%;padding:16px;background:#e50914;border:none;border-radius:4px;color:#fff;font-size:1.2rem;cursor:pointer;margin-top:20px;}
+            button:hover {background:#f40612;}
+            .link {text-align:center;margin-top:20px;}
+            .link a {color:#e50914;text-decoration:none;}
+            .error {color:#e50914;text-align:center;margin-top:20px;}
+        </style>
+    </head>
+    <body>
+        <div class="box">
+            <h2>MoodFlix</h2>
+            <form method="post">
+                <input type="text" name="username" placeholder="Username" required>
+                <input type="password" name="password" placeholder="Password" required>
+                <button type="submit">Log In</button>
+            </form>
+            {% with messages = get_flashed_messages() %}
+              {% if messages %}
+                <p class="error">{{ messages[0] }}</p>
+              {% endif %}
+            {% endwith %}
+            <div class="link">New here? <a href="/signup">Create an account</a></div>
+        </div>
+    </body>
+    </html>
+    ''')
+
+@app.route('/logout')
+def logout():
+    session.pop('logged_in', None)
+    flash('Logged out successfully')
+    return redirect(url_for('login'))
+
 @app.route('/')
+@login_required
 def home():
-    return '''
+    return render_template_string('''
     <!DOCTYPE html>
     <html lang="en">
     <head>
@@ -54,14 +176,16 @@ def home():
         <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&display=swap" rel="stylesheet">
         <style>
             body, html {margin:0;padding:0;background:#141414;color:#fff;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;}
-            .hero {background: linear-gradient(rgba(0,0,0,0.7), rgba(0,0,0,0.8)), url('https://i.etsystatic.com/25516846/r/il/28a604/3865202010/il_fullxfull.3865202010_hjku.jpg') center/cover no-repeat;height:100vh;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;padding:20px;box-sizing:border-box;}
+            .hero {background: linear-gradient(rgba(0,0,0,0.7), rgba(0,0,0,0.8)), url('https://i.etsystatic.com/25516846/r/il/28a604/3865202010/il_fullxfull.3865202010_hjku.jpg') center/cover no-repeat;height:100vh;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;padding:20px;position:relative;}
             h1 {font-family:'Bebas Neue',cursive;font-size:clamp(4rem, 12vw, 8rem);margin:0;letter-spacing:4px;text-shadow:0 4px 20px rgba(0,0,0,0.9);}
             .tagline {font-size:clamp(1.2rem, 5vw, 2rem);margin:20px 0 40px;max-width:90%;}
             .btn {background:#e50914;color:#fff;padding:16px 40px;font-size:clamp(1.2rem, 4vw, 1.8rem);border:none;border-radius:4px;cursor:pointer;transition:background 0.3s;margin:10px;}
             .btn:hover {background:#f40612;}
+            .logout {position:absolute;top:20px;right:20px;background:#e50914;padding:10px 20px;border-radius:4px;text-decoration:none;font-size:1rem;}
         </style>
     </head>
     <body>
+        <a href="/logout" class="logout">Logout</a>
         <div class="hero">
             <h1>MoodFlix</h1>
             <p class="tagline">Discover the perfect Indian movie or series based on your mood</p>
@@ -72,13 +196,13 @@ def home():
         </div>
     </body>
     </html>
-    '''
+    ''')
 
 common_style = '''
 <style>
     body {background:#141414;color:#fff;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;margin:0;padding:0;min-height:100vh;}
     h1 {text-align:center;padding:40px 0;font-size:clamp(2rem, 8vw, 3rem);}
-    .container {max-width:1400px;margin:0 auto;padding:20px;}
+    .container {max-width:1400px;margin:0 auto;padding:20px;position:relative;}
     .grid {display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:20px;}
     .card {position:relative;overflow:hidden;border-radius:8px;box-shadow:0 4px 15px rgba(0,0,0,0.6);transition:transform 0.3s;cursor:pointer;background:#221f1f;height:250px;display:flex;align-items:center;justify-content:center;}
     .card:hover, .card:active {transform:scale(1.08);}
@@ -86,26 +210,23 @@ common_style = '''
     .card h3 {position:absolute;bottom:0;left:0;right:0;background:rgba(0,0,0,0.8);padding:15px;margin:0;font-size:1.2rem;text-align:center;z-index:1;}
     .mood-text {font-size:clamp(1.5rem, 6vw, 3rem);color:#e50914;z-index:1;}
     a.back {display:block;text-align:center;margin:40px 0;color:#e50914;font-size:1.2rem;text-decoration:none;}
-    a.back:hover {text-decoration:underline;}
+    .logout {position:absolute;top:20px;right:20px;background:#e50914;padding:10px 20px;border-radius:4px;text-decoration:none;}
     input[type="text"] {width:90%;max-width:600px;padding:20px;font-size:1.5rem;border-radius:4px;border:none;background:#333;color:#fff;margin-bottom:20px;}
     button {background:#e50914;padding:15px 40px;font-size:1.5rem;border:none;border-radius:4px;cursor:pointer;}
 </style>
 '''
 
-# Routes remain the same as previous fixed version, just with updated grid in common_style
-
 @app.route('/single', methods=['GET', 'POST'])
+@login_required
 def single():
     if request.method == 'POST':
         mood = request.form['mood'].lower()
-        suggestions = []
-        for title, data in contents.items():
-            if mood in [m.lower() for m in data[:-1]]:
-                suggestions.append((title, data[-1]))
+        suggestions = [ (title, data[-1]) for title, data in contents.items() if mood in [m.lower() for m in data[:-1]] ]
         if not suggestions:
             suggestions = [("No match found.", None)]
         return render_template_string(common_style + '''
         <div class="container">
+            <a href="/logout" class="logout">Logout</a>
             <h1>Suggestions for {{ mood }}</h1>
             <div class="grid">
                 {% for title, poster in suggestions %}
@@ -123,6 +244,7 @@ def single():
 
     return render_template_string(common_style + '''
     <div class="container">
+        <a href="/logout" class="logout">Logout</a>
         <h1>What's your mood?</h1>
         <div class="grid">
             {% for mood in possible_moods %}
@@ -141,13 +263,13 @@ def single():
     ''', possible_moods=possible_moods)
 
 @app.route('/multi', methods=['GET', 'POST'])
+@login_required
 def multi():
-    # Same as before...
     if request.method == 'POST':
         moods_str = request.form['moods']
         input_moods = [m.strip().lower() for m in moods_str.split(',') if m.strip()]
         if not input_moods:
-            return common_style + '<h2 style="text-align:center;color:#e50914;padding:80px;">Please enter moods! <a href="/multi" style="color:#fff;">Retry</a></h2>'
+            return common_style + '<div style="text-align:center;padding:100px;"><h2 style="color:#e50914;">Please enter moods!</h2><a href="/multi" style="color:#fff;">Retry</a></div>'
         scored = []
         for title, data in contents.items():
             cmoods = [m.lower() for m in data[:-1]]
@@ -161,6 +283,7 @@ def multi():
             suggestions = [("No match.", None)]
         return render_template_string(common_style + '''
         <div class="container">
+            <a href="/logout" class="logout">Logout</a>
             <h1>Group Suggestions: {{ moods }}</h1>
             <div class="grid">
                 {% for title, poster in suggestions %}
@@ -177,17 +300,20 @@ def multi():
         ''', moods=', '.join([m.capitalize() for m in input_moods]), suggestions=suggestions)
     
     return render_template_string(common_style + '''
-    <div class="container" style="text-align:center;padding-top:60px;">
-        <h1>Group Mood</h1>
-        <p style="font-size:1.3rem;margin-bottom:30px;">Enter multiple moods (comma-separated)</p>
-        <form method="post">
-            <input type="text" name="moods" placeholder="e.g. happy, romantic, excited">
-            <br><br>
-            <button type="submit">Get Recommendations</button>
-        </form>
-        <a href="/" class="back">← Back to Home</a>
+    <div class="container">
+        <a href="/logout" class="logout">Logout</a>
+        <div style="text-align:center;padding-top:60px;">
+            <h1>Group Mood</h1>
+            <p style="font-size:1.3rem;margin-bottom:30px;">Enter multiple moods (comma-separated)</p>
+            <form method="post">
+                <input type="text" name="moods" placeholder="e.g. happy, romantic, excited">
+                <br><br>
+                <button type="submit">Get Recommendations</button>
+            </form>
+            <a href="/" class="back">← Back to Home</a>
+        </div>
     </div>
     ''')
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    app.run(debug=True)
